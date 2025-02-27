@@ -1,0 +1,107 @@
+import requests
+import json
+from datetime import datetime
+from googleapiclient.discovery import build
+import openai
+import tweepy
+import facebook
+
+# === CONFIGURATION ===
+BLOG_ID = "YOUR_BLOGGER_BLOG_ID"
+API_KEY = "YOUR_GOOGLE_BLOGGER_API_KEY"
+OPENWEATHER_API_KEY = "YOUR_OPENWEATHER_API_KEY"
+NEWSAPI_KEY = "YOUR_NEWSAPI_KEY"
+OPENAI_API_KEY = "YOUR_OPENAI_API_KEY"
+
+# Twitter API keys
+TWITTER_CONSUMER_KEY = "YOUR_TWITTER_CONSUMER_KEY"
+TWITTER_CONSUMER_SECRET = "YOUR_TWITTER_CONSUMER_SECRET"
+TWITTER_ACCESS_TOKEN = "YOUR_TWITTER_ACCESS_TOKEN"
+TWITTER_ACCESS_SECRET = "YOUR_TWITTER_ACCESS_SECRET"
+
+# Facebook API Token
+FACEBOOK_ACCESS_TOKEN = "YOUR_FACEBOOK_ACCESS_TOKEN"
+FACEBOOK_PAGE_ID = "YOUR_FACEBOOK_PAGE_ID"
+
+# === FETCH WEATHER DATA ===
+def get_weather_alerts(city="Los Angeles"):
+    url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={OPENWEATHER_API_KEY}&units=metric"
+    response = requests.get(url).json()
+    if "weather" in response:
+        return f"🌪️ Weather Alert: {response['weather'][0]['description'].capitalize()} in {city}. Temperature: {response['main']['temp']}°C"
+    return "No weather alerts available."
+
+# === FETCH DISASTER NEWS ===
+def get_disaster_news():
+    url = f"https://newsapi.org/v2/top-headlines?category=science&apiKey={NEWSAPI_KEY}"
+    response = requests.get(url).json()
+    articles = response.get("articles", [])
+    if not articles:
+        return "No disaster news found."
+    
+    news_content = ""
+    for article in articles[:3]:  # Limit to 3 articles
+        news_content += f"{article['title']} - {article['url']}\n"
+    return news_content
+
+# === AI-GENERATED SUMMARY ===
+def generate_ai_summary(news_text):
+    openai.api_key = OPENAI_API_KEY
+    prompt = f"Summarize this disaster news in a short, engaging paragraph:\n\n{news_text}"
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "system", "content": "You are a news writer."},
+                  {"role": "user", "content": prompt}]
+    )
+    return response["choices"][0]["message"]["content"]
+
+# === GENERATE BLOG POST ===
+def generate_blog_post():
+    weather_report = get_weather_alerts("Los Angeles")
+    disaster_news = get_disaster_news()
+    ai_summary = generate_ai_summary(disaster_news)
+
+    post_content = f"""
+        <h2>🌎 {datetime.now().strftime('%B %d, %Y')} - Weather & Disaster Update</h2>
+        <h3>Weather Alert:</h3>
+        <p>{weather_report}</p>
+        <h3>Recent Disaster News:</h3>
+        <p>{ai_summary}</p>
+    """
+    return post_content
+
+# === POST TO BLOGGER ===
+def post_to_blogger(content):
+    service = build("blogger", "v3", developerKey=API_KEY)
+    post = {
+        "kind": "blogger#post",
+        "title": f"🌍 Daily Weather & Disaster Update - {datetime.now().strftime('%B %d, %Y')}",
+        "content": content
+    }
+    service.posts().insert(blogId=BLOG_ID, body=post).execute()
+    print("✅ Blog post published successfully!")
+
+# === POST TO TWITTER ===
+def post_to_twitter(tweet):
+    auth = tweepy.OAuth1UserHandler(TWITTER_CONSUMER_KEY, TWITTER_CONSUMER_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET)
+    api = tweepy.API(auth)
+    api.update_status(tweet)
+    print("✅ Tweet posted successfully!")
+
+# === POST TO FACEBOOK ===
+def post_to_facebook(message):
+    graph = facebook.GraphAPI(access_token=FACEBOOK_ACCESS_TOKEN, version="3.1")
+    graph.put_object(parent_object=FACEBOOK_PAGE_ID, connection_name="feed", message=message)
+    print("✅ Facebook post published successfully!")
+
+# === RUN THE SCRIPT ===
+if __name__ == "__main__":
+    blog_content = generate_blog_post()
+    post_to_blogger(blog_content)
+
+    # Short summary for social media
+    social_text = f"🌎 {datetime.now().strftime('%B %d, %Y')} Weather & Disaster Update: {generate_ai_summary(get_disaster_news())}"
+
+    # Auto-post to Twitter & Facebook
+    post_to_twitter(social_text)
+    post_to_facebook(social_text)
